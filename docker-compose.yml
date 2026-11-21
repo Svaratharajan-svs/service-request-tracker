@@ -1,9 +1,9 @@
 
 services:
-  db:
+  # PostgreSQL Database
+  postgres:
     image: postgres:17-alpine
     container_name: service-tracker-db
-
     restart: unless-stopped
 
     environment:
@@ -15,15 +15,91 @@ services:
       - "5432:5432"
 
     volumes:
-      - service_tracker_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
 
     healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready -U tracker_user -d service_tracker
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U tracker_user -d service_tracker"]
+      interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 5
+
+    networks:
+      - service-tracker-network
+
+  # Laravel Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+
+    container_name: service-tracker-backend
+    restart: unless-stopped
+
+    ports:
+      - "8000:8000"
+
+    environment:
+      APP_NAME: "Service Request Tracker"
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8000
+
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: service_tracker
+      DB_USERNAME: tracker_user
+      DB_PASSWORD: local_dev_password
+
+      FRONTEND_URL: http://localhost:3000
+
+      SANCTUM_STATEFUL_DOMAINS: localhost:3000,127.0.0.1:3000
+      SESSION_DRIVER: database
+      SESSION_SECURE_COOKIE: "false"
+      SESSION_SAME_SITE: lax
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    command: >
+      sh -c "php artisan migrate --force &&
+             php artisan serve --host=0.0.0.0 --port=8000"
+
+    networks:
+      - service-tracker-network
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+
+    container_name: service-tracker-frontend
+    restart: unless-stopped
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      NODE_ENV: development
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+
+    depends_on:
+      - backend
+
+    networks:
+      - service-tracker-network
 
 volumes:
-  service_tracker_data:
+  postgres_data:
+    name: service_tracker_postgres_data
+
+networks:
+  service-tracker-network:
+    driver: bridge
