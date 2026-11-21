@@ -39,7 +39,7 @@ export function useServiceRequests({
         const result: PaginatedResponse<ServiceRequest> =
           await getRequests({
             page,
-            per_page: 3,
+            per_page: 10,
             status: status || undefined,
             search: search || undefined,
             priority :priority || undefined
